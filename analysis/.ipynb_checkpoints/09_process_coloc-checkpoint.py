@@ -193,32 +193,6 @@ def count_gene_overlaps(transcripts, dapi, micro, filled_dapi):
     binary_diff_dapi = np.logical_and(micro.astype(bool), np.logical_not(dapi.astype(bool)))
     binary_diff_filled_dapi = np.logical_and(micro.astype(bool), np.logical_not(filled_dapi.astype(bool)))
 
-    # Initialize counts for overlap
-    #transcripts['overlap_dapi'] = 0
-    #transcripts['overlap_diff_filled_dapi'] = 0
-
-    # Iterate over the transcripts and check for overlap
-    #for index, row in transcripts.iterrows():
-     #   x, y = int(row['translate_x']), int(row['translate_y'])
-     #   if dapi[y, x]:  # Check if the point overlaps with dapi_1
-     #       transcripts.at[index, 'overlap_dapi'] = 1
-     #   if binary_diff_filled_dapi[y, x]:  # Check if the point overlaps with the binary difference micro_1 - filled_dapi
-     #       transcripts.at[index, 'overlap_diff_filled_dapi'] = 1
-
-    # Subset the DataFrame to only include rows where there is an overlap in the desired regions
-    #result = transcripts[
-     #   (transcripts['overlap_diff_filled_dapi'] > 0) &
-      #  (transcripts['overlap_dapi'] == 0)
-    #]
-
-    # Group by gene and sum the overlaps
-
-    # Subset the DataFrame to only include rows where there is overlap exclusively with dapi_1
-    #dapi_only = transcripts[
-     #   (transcripts['overlap_dapi'] > 0) &
-     #   (transcripts['overlap_diff_filled_dapi'] == 0)
-    #]
-    
     results = transcripts[
         (transcripts['translate_x'].astype(int) >= 0) & (transcripts['translate_x'].astype(int) < binary_diff_filled_dapi.shape[1]) &
         (transcripts['translate_y'].astype(int) >= 0) & (transcripts['translate_y'].astype(int) < binary_diff_filled_dapi.shape[0])
@@ -298,17 +272,7 @@ def rename_index(df, adata,transcript_df):
 
 def generate_transcript_spreadsheet(transcripts, dapi, micro, ad_test):
     # Calculate the union of dapi_1 and micro_1
-    union_mask = np.logical_or(dapi.astype(bool), micro.astype(bool))
-    
-    #transcripts['overlap'] = 0
-    
-    #for index, row in transcripts.iterrows():
-     #   x, y = int(row['translate_x']), int(row['translate_y'])
-     #   if union_mask[y, x]:
-      #      transcripts.at[index, 'overlap'] = 1
-            
-    #filtered_transcripts = transcripts[transcripts.overlap > 0]
-    
+    union_mask = np.logical_or(dapi.astype(bool), micro.astype(bool))  
     
 
     # Filter transcripts to include only those within the union of dapi_1 and micro_1
@@ -449,56 +413,6 @@ def generate_transcript_positions(counts_matrix_full, micro_1, n_iterations=1):
     
     return pd.DataFrame(results)
 
-def calculate_clq(coloc_matrix, counts_matrix_full, genes):
-    """
-    Calculate the colocalization quotient (CLQ) for every gene-gene pair.
-    
-    Args:
-        coloc_matrix (np.array): A square matrix (N_genes x N_genes) representing 
-                                 the number of colocations between genes.
-        counts_matrix_full (pd.DataFrame): A DataFrame with the total number of transcripts 
-                                           for each gene in the cell compartment.
-        genes (list): A list of gene names corresponding to the coloc_matrix indices.
-    
-    Returns:
-        np.array: A square matrix (N_genes x N_genes) of CLQ values with NaNs replaced by 0.
-    """
-    N_genes = len(genes)
-    total_transcripts = counts_matrix_full.sum().sum()  # Sum of all transcripts in the compartment
-    
-    # Initialize an empty square matrix to store CLQ values
-    clq_matrix = np.full((N_genes, N_genes), np.nan)
-    
-    # Iterate through gene pairs
-    for i in range(N_genes):
-        for j in range(N_genes):
-            # Extract required values from coloc_matrix
-            C_A_to_B = coloc_matrix[i, j]  # Number of A transcripts colocated with B
-            N_A = counts_matrix_full[genes[i]].values[0]  # Total number of gene A in the compartment
-            N_B = counts_matrix_full[genes[j]].values[0]  # Total number of gene B in the compartment
-            
-            # Adjust total N'B for same-gene pairs
-            if i == j:
-                N_B_prime = N_B - 1  # Avoid self-counting when A == B
-            else:
-                N_B_prime = N_B
-            
-            # Compute expected proportion of B given A
-            expected_proportion_B = (N_B_prime / total_transcripts)
-            
-            # Compute CLQ using the formula
-            if N_A > 0 and expected_proportion_B > 0:
-                clq = (C_A_to_B / N_A) / expected_proportion_B
-            else:
-                clq = np.nan  # Handle cases where no colocations or no expected
-            
-            # Store the result in the matrix
-            clq_matrix[i, j] = clq
-    
-    # Replace NaNs with 0
-    clq_matrix = np.nan_to_num(clq_matrix, nan=0.0)
-    
-    return clq_matrix
 
 def process_experiment(experiment):
     batch = experiment.split('/')[-2]
@@ -550,9 +464,6 @@ def process_experiment(experiment):
         merged_total_coloc_counts_no_perm = np.zeros((N_genes, N_genes), dtype=int)
         merged_total_coloc_counts_perm = np.zeros((N_permutations, N_genes, N_genes), dtype=int)
         
-        clq_scores_soma = np.zeros((len(ad_viz_morph),N_genes,N_genes))
-        clq_scores_branches = np.zeros((len(ad_viz_morph),N_genes,N_genes))
-        clq_scores_total = np.zeros((len(ad_viz_morph),N_genes,N_genes))
         for i in tqdm(range(len(ad_viz_morph)), desc=f"Processing {batch} - Morph {morph_class}"):
             ad_test = ad_viz_morph[i, :]
             small_raw, small_dapi, small_transcripts, image_loc = load_images(
@@ -603,7 +514,6 @@ def process_experiment(experiment):
                 N_permutations=N_permutations
             )
             
-            clq_scores_soma[i,:,:] = calculate_clq(gene_soma_coloc_counts_no_perm,counts_matrix_result_dapi,genes)
             merged_soma_coloc_counts_no_perm += gene_soma_coloc_counts_no_perm
             merged_soma_coloc_counts_perm += gene_soma_coloc_counts_perm.astype(int)
             
@@ -618,7 +528,6 @@ def process_experiment(experiment):
                 N_permutations=N_permutations
             )
             
-            clq_scores_branches[i,:,:] = calculate_clq(gene_branches_coloc_counts_no_perm,counts_matrix_result_branch,genes)
             merged_branches_coloc_counts_no_perm += gene_branches_coloc_counts_no_perm
             merged_branches_coloc_counts_perm += gene_branches_coloc_counts_perm.astype(int)
             
@@ -633,7 +542,6 @@ def process_experiment(experiment):
                 N_permutations=N_permutations
             )
             
-            clq_scores_total[i,:,:] = calculate_clq(gene_total_coloc_counts_no_perm,counts_matrix_full,genes)
             merged_total_coloc_counts_no_perm += gene_total_coloc_counts_no_perm
             merged_total_coloc_counts_perm += gene_total_coloc_counts_perm.astype(int)
             
@@ -656,37 +564,31 @@ def process_experiment(experiment):
         output_file_soma_perm = os.path.join(morph_output_dir, 'soma_full_permutation.npy')
         output_file_soma_mean = os.path.join(morph_output_dir, f'soma_full_permutation_mean.npy')
         output_file_soma_std = os.path.join(morph_output_dir, f'soma_full_permutation_std.npy')
-        output_file_soma_clq = os.path.join(morph_output_dir, 'soma_clq_scores.npy')
         
         output_file_branches_no_perm = os.path.join(morph_output_dir, 'branches_no_permutation.npy')
         output_file_branches_perm = os.path.join(morph_output_dir, 'branches_full_permutation.npy')
         output_file_branches_mean = os.path.join(morph_output_dir, f'branches_full_permutation_mean.npy')
         output_file_branches_std = os.path.join(morph_output_dir, f'branches_full_permutation_std.npy')
-        output_file_branches_clq = os.path.join(morph_output_dir, 'branches_clq_scores.npy')
         
         output_file_total_no_perm = os.path.join(morph_output_dir, 'total_no_permutation.npy')
         output_file_total_perm = os.path.join(morph_output_dir, 'total_full_permutation.npy')
         output_file_total_mean = os.path.join(morph_output_dir, f'total_full_permutation_mean.npy')
         output_file_total_std = os.path.join(morph_output_dir, f'total_full_permutation_std.npy')
-        output_file_total_clq = os.path.join(morph_output_dir, 'total_clq_scores.npy')
         
         np.save(output_file_soma_no_perm, merged_soma_coloc_counts_no_perm)
         np.save(output_file_soma_perm, merged_soma_coloc_counts_perm_sum)
         np.save(output_file_soma_mean, means_soma)
         np.save(output_file_soma_std, stds_soma)
-        np.save(output_file_soma_clq, clq_scores_soma)
         
         np.save(output_file_branches_no_perm, merged_branches_coloc_counts_no_perm)
         np.save(output_file_branches_perm, merged_branches_coloc_counts_perm_sum)
         np.save(output_file_branches_mean, means_branches)
         np.save(output_file_branches_std, stds_branches)
-        np.save(output_file_branches_clq, clq_scores_branches)
         
         np.save(output_file_total_no_perm, merged_total_coloc_counts_no_perm)
         np.save(output_file_total_perm, merged_total_coloc_counts_perm_sum)
         np.save(output_file_total_mean, means_total)
         np.save(output_file_total_std, stds_total)
-        np.save(output_file_total_clq, clq_scores_total)
 
 if __name__ == '__main__':
     experiment_paths = sys.argv[1:]
