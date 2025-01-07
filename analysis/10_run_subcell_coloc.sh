@@ -11,7 +11,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=dhenze@stanford.edu
 
-# Load necessary modules
+# Load modules from Vizgen.sif container
 module load anaconda
 conda activate Vizgen_2
 
