@@ -124,6 +124,32 @@ def extract_label_pixel_values_baysor(boundaries, label_image):
     
     return data
 
+# Main function to orchestrate the workflow
+def main(base_path, label_file, geometry_file):
+    # File paths
+    label_file_path = os.path.join(base_path, "labeled_image.tif")
+    geometry_file_path = os.path.join(base_path, "resegment_full/cellpose_mosaic_space.parquet")
+    
+    # Load label image and boundaries
+    label_image = load_tiff_image(label_file_path)
+    boundaries = gpd.read_parquet(geometry_file_path)
+    
+    print('Label image and boundaries loaded.')
+    
+    # Extract pixel values from label image and create DataFrame
+    data = extract_label_pixel_values(boundaries, label_image)
+    df = pd.DataFrame(data)
+    
+    # Save DataFrame to CSV
+    output_file = os.path.join(base_path, 'Label_Image_Pixel_Values.csv')
+    df.to_csv(output_file, index=False)
+    print(f'Data saved to {output_file}')
 
 if __name__ == "__main__":
-    pass
+    import argparse
+    parser = argparse.ArgumentParser(description='Extract pixel values from label image and save to CSV.')
+    parser.add_argument('base_path', type=str, help='Path to the base directory of the experiment')
+
+    args = parser.parse_args()
+    
+    main(args.base_path, args.label_file, args.geometry_file)

@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=200G
 
-# Load modules from Vizgen.sif container
+# Load any required modules
 module load anaconda
 conda activate Vizgen_2
 
