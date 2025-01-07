@@ -7,7 +7,6 @@
 #SBATCH --mail-type=ALL
 #SBATCH --array=0-11
 
-source /oak/stanford/groups/quake/doug/resources/miniconda3/etc/profile.d/conda.sh
 export JULIA_NUM_THREADS=10
 
 # Define an array of paths
@@ -33,7 +32,7 @@ path=${paths[$SLURM_ARRAY_TASK_ID]}
 cd $path
 
 # Run Baysor
-/oak/stanford/groups/quake/doug/resources/Baysor-0.6.2/bin/baysor/bin/baysor run -s 6.5 -x global_x -y global_y -g gene -m 50 -p \
+resources/Baysor-0.6.2/bin/baysor/bin/baysor run -s 6.5 -x global_x -y global_y -g gene -m 50 -p \
 -o "${path}_6-5_micron" \
 --save-polygons=geojson \
 --prior-segmentation-confidence 0 \

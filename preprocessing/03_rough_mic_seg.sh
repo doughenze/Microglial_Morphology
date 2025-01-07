@@ -21,4 +21,11 @@ repos=('24-mo-female-1/'
 
 repo="/hpc/projects/group.quake/doug/Shapes_Spatial/${repos[$SLURM_ARRAY_TASK_ID]}/"
 
+# If environment is not active run it as follows
+# singularity exec segment.sif conda run -n segment_cells python microglia_segmentation.py "${repo}images" 'Anti-Rabbit' 4096 "${repo}" --min_size 1500
+# If running from conda environments
+
+module load anaconda
+conda activate segment_cells
+
 python microglia_segmentation.py "${repo}images" 'Anti-Rabbit' 4096 "${repo}" --min_size 1500
