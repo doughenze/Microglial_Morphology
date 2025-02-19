@@ -1,4 +1,4 @@
-# This code was directly adapted from the DypFish repo: https://github.com/cbib/dypfish
+# This code was adapted from the DypFish repo: https://github.com/cbib/dypfish
 
 import scanpy as sc
 import pandas as pd
@@ -479,7 +479,39 @@ def compute_degree_of_clustering_compartment(subset_location_compartment,
     d_of_c = np.array(clustering_indices[clustering_indices > 1] - 1).sum()
     if int(d_of_c) == 0:
         d_of_c = 0.0001
-    return d_of_c 
+    return d_of_c
+
+def compute_clustering_per_process(subset_genes, subset_counts, total_1, non_dapi_1, r_max, transform_matrix):
+    """
+    Computes the degree of clustering (d_of_c) per individual process within non_dapi_1.
+    Returns the average d_of_c across all non-zero processes.
+    """
+    labeled_processes, _ = label(non_dapi_1)  # Label separate processes
+    unique_labels = np.unique(labeled_processes)
+    unique_labels = unique_labels[unique_labels > 0]  # Ignore background (label=0)
+
+    d_of_c_list = []
+    for lab in unique_labels:
+        process_mask = (labeled_processes == lab)
+
+        # Subset transcripts within this process
+        transcripts_in_process = subset_genes[
+            process_mask[subset_genes["translate_y"].astype(int),
+                         subset_genes["translate_x"].astype(int)]
+        ]
+
+        if len(transcripts_in_process) < 2:
+            continue  # Skip processes with too few transcripts
+
+        # Compute clustering for this process
+        d_of_c_val = compute_degree_of_clustering_compartment(
+            transcripts_in_process, subset_counts, total_1, process_mask.astype(np.uint8), r_max, transform_matrix
+        )
+        d_of_c_list.append(d_of_c_val)
+
+    # Average non-zero clustering values
+    non_zero_d_of_c = [val for val in d_of_c_list if val != 0.0001]
+    return np.mean(non_zero_d_of_c) if non_zero_d_of_c else 0.0001
 
 def process_experiment(experiment, morph_class=None):
     batch = experiment.split('/')[-2]
@@ -584,9 +616,7 @@ def process_experiment(experiment, morph_class=None):
                 if len(subset_genes) == 0:
                     d_of_c = 0.0001
                 else:
-                    d_of_c = compute_degree_of_clustering_compartment(subset_genes,
-                                             subset_counts,total_1,non_dapi_1,r_max,
-                                             transform_matrix)
+                    d_of_c = compute_clustering_per_process(subset_genes, subset_counts, total_1, non_dapi_1, 5, transform_matrix)
                 branches_d_c[gene_no,i] = d_of_c
                 gene_no += 1
         morph_output_dir = f'cluster_output/{batch}/morph_{morph_class}'

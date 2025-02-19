@@ -2,7 +2,7 @@
 #SBATCH --job-name=cluster_subcell
 #SBATCH --output=cluster_logs/experiment_%A_%a.out
 #SBATCH --error=cluster_logs/experiment_%A_%a.err
-#SBATCH --array=0-47%12
+#SBATCH --array=0-23
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=100G 
@@ -34,8 +34,8 @@ EXPERIMENTS=(
 )
 
 # Define morph classes
-MORPH_CLASSES=("0" "1" "2" "3" "4")
-
+ #MORPH_CLASSES=("0" "1" "2" "3" "4")
+MORPH_CLASSES=("3" "4")
 # Calculate experiment and morph class indices
 N_MORPH_CLASSES=${#MORPH_CLASSES[@]}
 EXPERIMENT_INDEX=$((SLURM_ARRAY_TASK_ID / N_MORPH_CLASSES))
