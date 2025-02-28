@@ -1,4 +1,4 @@
-Upon downloading the relevant manuscript data from [Figshare](10.6084/m9.figshare.27919227), and the relevant containers for the various environments from [Zenodo](https://zenodo.org/records/14611122), the code blocks can be run.
+Upon downloading the relevant manuscript data from [Figshare](https://figshare.com/articles/dataset/Aging_MERFISH_Brains/27919227), and the relevant containers for the various environments from [Zenodo](https://zenodo.org/records/14611122), the code blocks can be run.
 
 All folders are numbered in the order that they should be run.
 
