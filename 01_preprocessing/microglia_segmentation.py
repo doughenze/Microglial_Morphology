@@ -9,6 +9,10 @@ from skimage.morphology import remove_small_objects, binary_opening, binary_clos
 import cv2
 from skimage import measure, morphology, exposure
 
+"""
+Primary microglia segmentations: very rough just to identify basic area
+"""
+
 def load_tiff_files_in_tiles(directory, stain_name, tile_size, min_size):
     """
     Load .tif files in tiles and create a max projection image.

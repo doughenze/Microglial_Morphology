@@ -1,3 +1,5 @@
+# This code is simply running the morphology measurement calculations for individual cells
+
 import Mapping
 import argparse
 import os

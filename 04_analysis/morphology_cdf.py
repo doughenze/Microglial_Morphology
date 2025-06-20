@@ -406,18 +406,7 @@ def calculate_normalized_distances(
 
 def main(ordered_morph):
     # Load the data
-    ad_parent = sc.read_h5ad('../03_morph_embedding/Shape_500.h5ad')
-    ad_parent = ad_parent[ad_parent.obs.updated_celltype == 'Microglia']
-    
-    place_in_order = place_in_order = {
-        0: '4',
-        1: '1',
-        2: '2',
-        3: '0',
-        4: '3',
-    }
-    
-    ad_parent.obs['ordered_morph'] = ad_parent.obs.morph_leiden.map(place_in_order)
+    ad_parent = sc.read_h5ad('Transciptomic_labels_and_morphology_labels_full.h5ad')
     ad_parent = ad_parent[ad_parent.obs['ordered_morph'] == ordered_morph]
     
     experiment_base_paths = [
@@ -452,8 +441,12 @@ def main(ordered_morph):
         raw_dapi = Mapping.load_tiff_image(experiment + '/images/mosaic_DAPI_z3.tif')
         
         predefined_gene_list = np.unique(transcripts.gene.unique().tolist())
+        # we already found the transcripts in each cell so we can just use them right here
+        # All we want to show is distance from soma so this is fine in max projection land
+        transcripts = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_complete.csv',index_col = 0)
         
         for i in tqdm(range(len(ad_viz)), desc=f"Processing {batch}"):
+            # grab relevant cells and generate lists of cells
             ad_test = ad_viz[i,:]
             small_raw, small_dapi, small_transcripts, image_loc = load_images(batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0],raw_im, raw_dapi,transcripts)
     
@@ -472,7 +465,8 @@ def main(ordered_morph):
             sub_full_trans = generate_transcript_spreadsheet(small_transcripts, dapi_1, micro_1, ad_test)
             counts_matrix_full = rename_index(sub_full_trans,ad_test,transcripts)
             centroid = regionprops(label(dapi_1)[0])[0].centroid
-        
+            
+            # calculate normalized distance between every transcript and the soma center
             normalized_distances_dict = calculate_normalized_distances(
             genes_df=sub_full_trans,
             centroid=centroid,
