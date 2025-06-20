@@ -39,7 +39,7 @@ Environment configuration files (e.g., `environment.yml`) and installation instr
 
 ## Questions
 
-For further questions or clarifications, please contact the authors of the manuscript or raise an issue in this repository.
+For further questions or clarifications, please raise an issue in this repository.
 
 ---
 
