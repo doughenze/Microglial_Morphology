@@ -622,7 +622,7 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
         stds_total = np.std(merged_total_coloc_counts_perm, axis=0)
         
         # Save outputs for each morph class separately
-        morph_output_dir = f'permutation_coloc_v3/{batch}/morph_{morph_class}'
+        morph_output_dir = f'permutation_coloc_v2/{batch}/morph_{morph_class}'
         os.makedirs(morph_output_dir, exist_ok=True)
         
         output_file_soma_no_perm = os.path.join(morph_output_dir, 'soma_no_permutation.npy')

@@ -34,8 +34,7 @@ EXPERIMENTS=(
 )
 
 # Define morph classes to run it on: only use the complex morphologies
-#MORPH_CLASSES=("3" "4")
-MORPH_CLASSES=("2")
+MORPH_CLASSES=("3" "4")
 # Calculate experiment and morph class indices
 N_MORPH_CLASSES=${#MORPH_CLASSES[@]}
 EXPERIMENT_INDEX=$((SLURM_ARRAY_TASK_ID / N_MORPH_CLASSES))
