@@ -46,7 +46,7 @@ The goal of this module is to:
 
 ---
 
-### 4. Handcrafted Morphological Feature Extraction
+### 4. Morphological Feature Extraction
 
 **Script:** `process_image.py`  
 **Launcher:** `04_submit_jobs.sh` (SLURM batch array)
