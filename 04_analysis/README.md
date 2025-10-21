@@ -124,11 +124,11 @@ These notebooks assemble final figures based on clustering and colocalization an
 
 ---
 
-## 6. Supplementary Data Figure Notebooks
+## 6. Supplementary Data Figure Notebooks and scripts
 
 - `SI_1_IHC_max_projection.ipynb` – Max projection for immunohistochemistry
 - `SI_2_IHC_Axl.ipynb` – IHC-specific analysis for Axl
-- `SI_3_Random_Cells_MERFISH.ipynb` – Visualization of random microglia from MERFISH
+- `SI_3_submit_plots.sh` – Visualization of random microglia from MERFISH
 
 ---
 
@@ -145,7 +145,7 @@ These notebooks assemble final figures based on clustering and colocalization an
 | Subcell clustering            | `09_run_subcell_cluster.sh`, `Clustering_analysis_3d.py` | DypFISH-inspired 3D segmentation    |
 | Subcell colocalization       | `10_run_subcell_coloc.sh`, `process_coloc_3d.py` | Adapted from Nature 2024            |
 | Figures 4 & 5                | `11_Figure_4_and_SI.ipynb`, `12_Figure_5_and_SI.ipynb` | Requires all prior steps            |
-| Supplementary figures        | `SI_*.ipynb`                                 | For extended data visuals           |
+| Supplementary figures        | `SI_*`                                 | For extended data visuals           |
 
 ---
 

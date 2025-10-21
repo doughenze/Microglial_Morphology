@@ -20,6 +20,16 @@ from typing import Tuple, List
 import string
 from functools import partial, lru_cache
 
+import platform
+import numpy as np, scipy, sklearn
+print("Host:", platform.node())
+print("Python:", sys.version.split()[0])
+print("Conda prefix:", os.environ.get("CONDA_PREFIX"))
+print("NumPy:", np.__version__, "->", np.__file__)
+print("SciPy:", scipy.__version__, "->", scipy.__file__)
+print("sklearn:", sklearn.__version__, "->", sklearn.__file__)
+print("sys.path[0:5]:", sys.path[:5])
+
 import scanpy as sc
 import pandas as pd
 import numpy as np
@@ -33,7 +43,37 @@ from scipy.ndimage import binary_fill_holes, label, distance_transform_edt
 from skimage.segmentation import find_boundaries, watershed
 from skimage.feature import peak_local_max
 from skimage.measure import regionprops
+#
+# Global Dictionary
+_BATCHID_TO_PATH = {
+ '3-mo-male-1':'202405250811_3-mo-male-mouse-1-cerebellum-IHC_VMSC12602/region_1',
+ '3-mo-male-2':'202406171454_3m-male-2-IHC_VMSC11602/region_0',
+ '3-mo-male-3-rev2':'202407021559_3-mo-male-3-rev2_VMSC12602/region_0',
+ '3-mo-female-1-rev2':'202407010924_3-month-female-1-rev2_VMSC12602/region_0',
+ '3-mo-female-2':'202405311300_3month-female-2-IHC_VMSC12602/region_0',
+ '3-mo-female-3':'202406171409_3m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-male-1':'202406101010_24month-male-1-IHC_VMSC12602/region_0',
+ '24-mo-male-2':'202406141135_24m-male-2-IHC_VMSC12602/region_0',
+ '24-mo-male-4-rev2':'202407011057_24-month-male-4-rev2_VMSC11602/regioin_0',
+ '24-mo-female-1':'202406071120_24m-female-1-IHC_VMSC11602/region_0',
+ '24-mo-female-3':'202406071304_24m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-female-5':'202406141019_24m-female-5-IHC_VMSC11602/region_0'
+}
 
+_PATH_TO_BATCHID = {v.rstrip("/"): k for k, v in _BATCHID_TO_PATH.items()}
+
+def extract_batch_id(exp_path) -> str:
+    """
+    Map any full experiment path—whether or not it ends with ‘/’—
+    to the corresponding key in _BATCHID_TO_PATH.
+    """
+    # normalise: remove trailing slashes, convert to forward-slash string
+    exp_path = Path(exp_path).as_posix().rstrip("/")
+
+    for fragment, batch_id in _PATH_TO_BATCHID.items():
+        if fragment in exp_path:
+            return batch_id
+    raise ValueError(f"Could not map {exp_path!r} to any batch ID.")
 
 # attempting a monkey-patch to make this run much faster:
 # Only perform this step if their is enough memory
@@ -52,11 +92,11 @@ Mapping.load_tiff_image = _load_once        # << patch in
 
 
 def find_filtered_transcripts(experiment_path):
-    region_types = ['region_0', 'region_1']
-    for region in region_types:
-        file_path = f'{experiment_path}baysor/detected_transcripts.csv'
-        if os.path.exists(file_path):
-            return pd.read_csv(file_path,index_col=0)
+    #region_types = ['region_0', 'region_1']
+    #for region in region_types:
+    file_path = f'{experiment_path}detected_transcripts.csv'
+    if os.path.exists(file_path):
+        return pd.read_csv(file_path,index_col=0)
     return None
 
 def extract_sub_image_with_padding(image, bbox, padding=10):
@@ -68,9 +108,9 @@ def extract_sub_image_with_padding(image, bbox, padding=10):
     return image[min_row:max_row, min_col:max_col], (min_row, min_col)
 
 def load_images(batchID, x_ax, y_ax, raw_im, raw_dapi,transcripts):
-    root = '/hpc/projects/group.quake/doug/Shapes_Spatial/'
+    root = "/oak/stanford/groups/quake/shared/Vizgen/dough/output/"
     
-    transform_file = f'{root}{batchID}/images/micron_to_mosaic_pixel_transform.csv'
+    transform_file = f'{root}{_BATCHID_TO_PATH[batchID]}/images/micron_to_mosaic_pixel_transform.csv'
     transform_df = pd.read_table(transform_file, sep=' ', header=None)
     transformation_matrix = transform_df.values
     
@@ -378,9 +418,9 @@ def load_plane_tiles(root: str,
     -------
     raw_rabbit, raw_dapi : np.ndarray (uint8/16, 1000×1000)
     """
-    rabbit_path = root + batch + f"/images/mosaic_Anti-Rabbit_z{z}.tif"
-    dapi_path   = root + batch + f"/images/mosaic_DAPI_z3.tif" # center of the imaging stack so we remove out of focus stuff.
-    chicken_path = root + batch + f"/images/mosaic_Anti-Chicken_z{z}.tif"
+    rabbit_path = root + _BATCHID_TO_PATH[batch] + f"/images/mosaic_Anti-Rabbit_z{z}.tif"
+    dapi_path   = root + _BATCHID_TO_PATH[batch] + f"/images/mosaic_DAPI_z3.tif" # center of the imaging stack so we remove out of focus stuff.
+    chicken_path = root + _BATCHID_TO_PATH[batch] + f"/images/mosaic_Anti-Chicken_z{z}.tif"
 
     for p in (rabbit_path, dapi_path, chicken_path):
         if not os.path.exists(p): raise FileNotFoundError(p)
@@ -451,7 +491,7 @@ def segment_plane_micro(im: np.ndarray,
     keep &= maxproj_micro            # << the key new line
     return keep
 
-def segment_plane_chicken(im, win=121, area_thresh=500):
+def segment_plane_chicken(im, win=245, area_thresh=500):
     """
     Segment Anti-Chicken channel (e.g. vasculature or other exclusion zone).
     Returns a boolean mask of the *entire* Anti-Chicken region in the tile.
@@ -460,11 +500,11 @@ def segment_plane_chicken(im, win=121, area_thresh=500):
     if im.dtype == np.uint16:
         im = cv2.normalize(im, None, 0, 255,
                            cv2.NORM_MINMAX).astype(np.uint8)
-    den = cv2.fastNlMeansDenoising(im)
+    den = cv2.fastNlMeansDenoising(im,h=10)
     th  = cv2.adaptiveThreshold(255-den, 255,
                                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                cv2.THRESH_BINARY, win, 2)
-    mask = closing(opening(255-th, disk(3)), disk(3)).astype(bool)
+                                cv2.THRESH_BINARY, win, 6)
+    mask = closing(opening(255-th, disk(5)), disk(3)).astype(bool)
     # keep *all* blobs above size threshold
     labels = label(mask)
     keep = np.zeros_like(mask, bool)
@@ -620,12 +660,12 @@ def _warm_cache(batch: str, z_vals, root: str):
     channels = ("Anti-Rabbit", "Anti-Chicken")
     for z in z_vals:
         for ch in channels:
-            p = f"{root}/{batch}/images/mosaic_{ch}_z{z}.tif"
+            p = f"{root}/{_BATCHID_TO_PATH[batch]}/images/mosaic_{ch}_z{z}.tif"
             if os.path.exists(p):
                 Mapping.load_tiff_image(p)   # first call → disk, later calls → RAM
     # single-plane helpers
-    Mapping.load_tiff_image(f"{root}/{batch}/binary_image.tif")
-    Mapping.load_tiff_image(f"{root}/{batch}/images/mosaic_DAPI_z3.tif")
+    Mapping.load_tiff_image(f"{root}/{_BATCHID_TO_PATH[batch]}/binary_image.tif")
+    Mapping.load_tiff_image(f"{root}/{_BATCHID_TO_PATH[batch]}/images/mosaic_DAPI_z3.tif")
 
 # ----------------------------------------------------------------------
 #  Driver for *one* experiment
@@ -633,7 +673,7 @@ def _warm_cache(batch: str, z_vals, root: str):
 def run_experiment(exp_path: Path,
                    ad_parent: "sc.AnnData",
                    outdir: Path,
-                   root_spatial: Path = Path("/hpc/projects/group.quake/doug/Shapes_Spatial")):
+                   root_spatial: Path = Path("/oak/stanford/groups/quake/shared/Vizgen/dough/output")):
     """
     Parameters
     ----------
@@ -648,8 +688,9 @@ def run_experiment(exp_path: Path,
         Root of the slide folder hierarchy (defaults to Doug's path).
     """
     exp_path   = str(exp_path)                      
-    root_str   = str(root_spatial) + '/'                
-    batch      = exp_path.rstrip("/").split("/")[-1]
+    root_str   = str(root_spatial) + '/'
+    batch      = extract_batch_id(exp_path)
+    #batch      = exp_path.rstrip("/").split("/")[-1]    # definitely fix this
     print(f"[{batch}]   starting")
 
     ad_viz = ad_parent[ad_parent.obs.batchID == batch]
@@ -674,8 +715,8 @@ def run_experiment(exp_path: Path,
 
     # 3 · images that are needed *once* per experiment --------------------
     print("before max_proj")
-    raw_im   = Mapping.load_tiff_image(f"{root_str}/{batch}/binary_image.tif")
-    raw_dapi = Mapping.load_tiff_image(f"{root_str}/{batch}/images/mosaic_DAPI_z3.tif")
+    raw_im   = Mapping.load_tiff_image(f"{root_str}/{_BATCHID_TO_PATH[batch]}/binary_image.tif")
+    raw_dapi = Mapping.load_tiff_image(f"{root_str}/{_BATCHID_TO_PATH[batch]}/images/mosaic_DAPI_z3.tif")
     print("after max_proj")
 
     # 4 · results containers ---------------------------------------------

@@ -28,6 +28,37 @@ import re
 import argparse
 from pathlib import Path
 
+# Global Dictionary
+_BATCHID_TO_PATH = {
+ '3-mo-male-1':'202405250811_3-mo-male-mouse-1-cerebellum-IHC_VMSC12602/region_1',
+ '3-mo-male-2':'202406171454_3m-male-2-IHC_VMSC11602/region_0',
+ '3-mo-male-3-rev2':'202407021559_3-mo-male-3-rev2_VMSC12602/region_0',
+ '3-mo-female-1-rev2':'202407010924_3-month-female-1-rev2_VMSC12602/region_0',
+ '3-mo-female-2':'202405311300_3month-female-2-IHC_VMSC12602/region_0',
+ '3-mo-female-3':'202406171409_3m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-male-1':'202406101010_24month-male-1-IHC_VMSC12602/region_0',
+ '24-mo-male-2':'202406141135_24m-male-2-IHC_VMSC12602/region_0',
+ '24-mo-male-4-rev2':'202407011057_24-month-male-4-rev2_VMSC11602/region_0',
+ '24-mo-female-1':'202406071120_24m-female-1-IHC_VMSC11602/region_0',
+ '24-mo-female-3':'202406071304_24m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-female-5':'202406141019_24m-female-5-IHC_VMSC11602/region_0'
+}
+
+_PATH_TO_BATCHID = {v.rstrip("/"): k for k, v in _BATCHID_TO_PATH.items()}
+
+def extract_batch_id(exp_path) -> str:
+    """
+    Map any full experiment path—whether or not it ends with ‘/’—
+    to the corresponding key in _BATCHID_TO_PATH.
+    """
+    # normalise: remove trailing slashes, convert to forward-slash string
+    exp_path = Path(exp_path).as_posix().rstrip("/")
+
+    for fragment, batch_id in _PATH_TO_BATCHID.items():
+        if fragment in exp_path:
+            return batch_id
+    raise ValueError(f"Could not map {exp_path!r} to any batch ID.")
+
 # attempting a monkey-patch to make this run much faster:
 # ─────────────────────────────────────────────────────────────
 #   1.  Monkey-patch Mapping.load_tiff_image   (do this ONCE)
@@ -48,11 +79,12 @@ def _warm_cache(batch: str, z_vals, root: str):
     channels = ("Anti-Rabbit")
     for z in z_vals:
         for ch in channels:
-            p = f"{root}/{batch}/images/mosaic_{ch}_z{z}.tif"
+            p = f"{root}/{_BATCHID_TO_PATH[batch]}/images/mosaic_{ch}_z{z}.tif"
             if os.path.exists(p):
                 Mapping.load_tiff_image(p)   # first call → disk, later calls → RAM
     # single-plane helpers
-    Mapping.load_tiff_image(f"{root}/{batch}/images/mosaic_DAPI_z3.tif")
+    Mapping.load_tiff_image(f"{root}/{_BATCHID_TO_PATH[batch]}/images/mosaic_DAPI_z3.tif")
+    Mapping.load_tiff_image(f"{root}/{_BATCHID_TO_PATH[batch]}/binary_image.tif")
 
 def find_max_z(directory):
     max_z = None
@@ -66,11 +98,11 @@ def find_max_z(directory):
     return max_z
 
 def find_filtered_transcripts(experiment_path):
-    region_types = ['region_0', 'region_1']
-    for region in region_types:
-        file_path = f'{experiment_path}baysor/detected_transcripts.csv'
-        if os.path.exists(file_path):
-            return pd.read_csv(file_path,index_col=0)
+    #region_types = ['region_0', 'region_1']
+    #for region in region_types:
+    file_path = f'{experiment_path}detected_transcripts.csv'
+    if os.path.exists(file_path):
+        return pd.read_csv(file_path,index_col=0)
     return None
 
 def extract_sub_image_with_padding(image, bbox, padding=10):
@@ -82,18 +114,14 @@ def extract_sub_image_with_padding(image, bbox, padding=10):
     return image[min_row:max_row, min_col:max_col], (min_row, min_col)
 
 def load_images(batchID, x_ax, y_ax, raw_im, raw_dapi,transcripts):
-    root = '/hpc/projects/group.quake/doug/Shapes_Spatial/'
+    root = "/oak/stanford/groups/quake/shared/Vizgen/dough/output/"
     
-    transform_file = f'{root}{batchID}/images/micron_to_mosaic_pixel_transform.csv'
+    transform_file = f'{root}{_BATCHID_TO_PATH[batchID]}/images/micron_to_mosaic_pixel_transform.csv'
     transform_df = pd.read_table(transform_file, sep=' ', header=None)
     transformation_matrix = transform_df.values
     
     x_ax = round(x_ax * transformation_matrix[0, 0] + transformation_matrix[0, 2])
     y_ax = round(y_ax * transformation_matrix[1, 1] + transformation_matrix[1, 2])
-    
-    #print(f'load {batchID}')
-    #raw_im = Mapping.load_tiff_image(root + batchID + '/binary_image.tif')
-    #dapi_im = Mapping.load_tiff_image(root + batchID + '/images/mosaic_DAPI_z3.tif')
     
     box_size = 500
     x_start = x_ax - box_size
@@ -454,9 +482,9 @@ def generate_transcript_positions_3d(counts_matrix_full, micro_1):
 
 
 def process_experiment(experiment: str, morph_class: str | None = None) -> None:
-    batch = experiment.split('/')[-2]
+    batch = extract_batch_id(experiment)
     
-    ad_parent = sc.read_h5ad('Transciptomic_labels_and_morphology_labels_full.h5ad')
+    ad_parent = sc.read_h5ad('/oak/stanford/groups/quake/doug/bruno_transfer/Papers/Shapes/full_run/conflicts_correction/Microglial_Morphology/04_analysis/Transciptomic_labels_and_morphology_labels_full.h5ad')
     ad_viz = ad_parent[ad_parent.obs.batchID == batch]
     
     transform_file = f'{experiment}/images/micron_to_mosaic_pixel_transform.csv'
@@ -464,8 +492,8 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
     transcripts = find_filtered_transcripts(experiment)
     blank_names = transcripts[transcripts.gene.str.contains('Blank')].gene.unique().tolist()
 
-    root = '/hpc/projects/group.quake/doug/Shapes_Spatial/'
-    max_z = find_max_z(root + batch + '/images/')
+    root = "/oak/stanford/groups/quake/shared/Vizgen/dough/output/"
+    max_z = find_max_z(root + _BATCHID_TO_PATH[batch] + '/images/')
     
     z_vals = transcripts.global_z.unique().astype(int)
     _warm_cache(batch, z_vals, root.rstrip("/"))
@@ -477,10 +505,10 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
     N_permutations = 1000
     
     # now that we have gene numbers established we should do this with the trimmed and version where we have already located all of the transcripts.
-    transcripts = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_complete.csv',index_col = 0)
-    counts_matrix_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_nuc.csv',index_col = 0)
-    counts_matrix_non_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_non_nuc.csv',index_col = 0)
-    counts_matrix_full_cell = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_nuc_y_non_nuc.csv',index_col = 0)
+    transcripts = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_complete.csv',index_col = 0)
+    counts_matrix_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_nuc.csv',index_col = 0)
+    counts_matrix_non_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_non_nuc.csv',index_col = 0)
+    counts_matrix_full_cell = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_nuc_y_non_nuc.csv',index_col = 0)
     
     # this is to prevent a bug later
     counts_matrix_nuc.index = counts_matrix_nuc.index.astype(str)
@@ -506,15 +534,18 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
         
         for i in tqdm(range(len(ad_viz_morph)), desc=f"Processing {batch} - Morph {morph_class}"):
             ad_test = ad_viz_morph[i, :]
-            #raw_im = Mapping.load_tiff_image(root + batch + f'/images/mosaic_Anti-Rabbit_z0.tif')
-            raw_dapi = Mapping.load_tiff_image(root + batch + f'/images/mosaic_DAPI_z3.tif')
+            raw_im_max = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + '/binary_image.tif')
+            raw_dapi = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + f'/images/mosaic_DAPI_z3.tif')
             # just setting plane shape here (it is dynamic because of edges)
             # so we can just feed in two of the same image
-            small_raw, small_dapi, small_transcripts, image_loc = load_images(
-                batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0], raw_dapi, raw_dapi,
+            small_raw_max, small_dapi, small_transcripts, image_loc = load_images(
+                batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0], raw_im_max, raw_dapi,
                 transcripts[transcripts.cell == ad_test.obs.Name[0]]
             )
-            plane_shape = small_raw.shape  # (Y, X)
+            plane_shape = small_raw_max.shape  # (Y, X)
+            
+            filled_raw_max = segment_image(small_raw_max, 201, foreground=True)
+            micro_max = roi_picker(filled_raw_max)
 
             # Pre-allocate 3D masks
             micro_3d = np.zeros((max_z, *plane_shape), dtype=bool)
@@ -524,14 +555,14 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
             
             # Load in the 3D volumes of our cells
             for z in range(max_z):
-                raw_im = Mapping.load_tiff_image(root + batch + f'/images/mosaic_Anti-Rabbit_z{z}.tif')
-                raw_dapi = Mapping.load_tiff_image(root + batch + f'/images/mosaic_DAPI_z3.tif')
+                raw_im = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + f'/images/mosaic_Anti-Rabbit_z{z}.tif')
+                raw_dapi = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + f'/images/mosaic_DAPI_z3.tif')
                 small_raw, small_dapi, _, _ = load_images(batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0],raw_im, raw_dapi,transcripts[transcripts.cell == ad_test.obs.Name[0]])
 
-                filled_raw = segment_image(small_raw, 205, foreground=True)
-                filled_dapi = segment_image(small_dapi, 255, foreground=True, dapi=True)
+                filled_raw = segment_image(small_raw, 155, foreground=True)
+                filled_dapi = segment_image(small_dapi, 155, foreground=True, dapi=True)
     
-                micro_1 = roi_picker(filled_raw)
+                micro_1 = micro_max & filled_raw # this will just grab segmented branches within our microglia mask
                 dapi_1 = roi_picker(filled_dapi,dapi=True)
                 dapi_1 = np.logical_and(dapi_1.astype(bool), micro_1.astype(bool))
                 total_1 = np.logical_or(dapi_1.astype(bool), micro_1.astype(bool))
@@ -543,8 +574,8 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
                 non_dapi_3d[z] = non_dapi_1
 
             small_raw, small_dapi, small_transcripts, _ = load_images(batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0],raw_im, raw_dapi,transcripts[transcripts.cell == ad_test.obs.Name[0]])
-            filled_raw = segment_image(small_raw, 205, foreground=True)
-            filled_dapi = segment_image(small_dapi, 255, foreground=True, dapi=True)
+            #filled_raw = segment_image(small_raw, 155, foreground=True)
+            #filled_dapi = segment_image(small_dapi, 155, foreground=True, dapi=True)
 
             counts_non_nuclei = small_transcripts[small_transcripts.compartment == 'cyto']
             counts_nuclei = small_transcripts[small_transcripts.compartment == 'nuc']
@@ -595,19 +626,21 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
             merged_branches_coloc_counts_no_perm += gene_branches_coloc_counts_no_perm.astype(int)
             merged_branches_coloc_counts_perm += gene_branches_coloc_counts_perm.astype(int)
             
-            # total counts
-            gene_total_coloc_counts_no_perm = generate_gene_coloc_matrices(
-                small_transcripts, counts_matrix_full, total_3d, gene_col, 
-                ['x', 'y', 'z'], genes, 'no_permutation', transform_matrix
-            )
-            gene_total_coloc_counts_perm = generate_gene_coloc_matrices(
-                small_transcripts, counts_matrix_full, total_3d, gene_col, 
-                ['x', 'y', 'z'], genes, 'global_permutation', transform_matrix, 
-                N_permutations=N_permutations
-            )
+            # break into soma and process for the analysis so I do not need this.
             
-            merged_total_coloc_counts_no_perm += gene_total_coloc_counts_no_perm.astype(int)
-            merged_total_coloc_counts_perm += gene_total_coloc_counts_perm.astype(int)
+            # total counts
+            #gene_total_coloc_counts_no_perm = generate_gene_coloc_matrices(
+            #    small_transcripts, counts_matrix_full, total_3d, gene_col, 
+            #    ['x', 'y', 'z'], genes, 'no_permutation', transform_matrix
+            #)
+            #gene_total_coloc_counts_perm = generate_gene_coloc_matrices(
+            #    small_transcripts, counts_matrix_full, total_3d, gene_col, 
+            #    ['x', 'y', 'z'], genes, 'global_permutation', transform_matrix, 
+            #    N_permutations=N_permutations
+            #)
+            
+            #merged_total_coloc_counts_no_perm += gene_total_coloc_counts_no_perm.astype(int)
+            #merged_total_coloc_counts_perm += gene_total_coloc_counts_perm.astype(int)
             
         merged_soma_coloc_counts_perm_sum = np.sum(merged_soma_coloc_counts_perm, axis=0).astype(int)
         means_soma = np.mean(merged_soma_coloc_counts_perm, axis=0)
@@ -617,12 +650,12 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
         means_branches = np.mean(merged_branches_coloc_counts_perm, axis=0)
         stds_branches = np.std(merged_branches_coloc_counts_perm, axis=0)
         
-        merged_total_coloc_counts_perm_sum = np.sum(merged_total_coloc_counts_perm, axis=0).astype(int)
-        means_total = np.mean(merged_total_coloc_counts_perm, axis=0)
-        stds_total = np.std(merged_total_coloc_counts_perm, axis=0)
+        #merged_total_coloc_counts_perm_sum = np.sum(merged_total_coloc_counts_perm, axis=0).astype(int)
+        #means_total = np.mean(merged_total_coloc_counts_perm, axis=0)
+        #stds_total = np.std(merged_total_coloc_counts_perm, axis=0)
         
         # Save outputs for each morph class separately
-        morph_output_dir = f'permutation_coloc_v2/{batch}/morph_{morph_class}'
+        morph_output_dir = f'permutation_coloc_v4/{batch}/morph_{morph_class}'
         os.makedirs(morph_output_dir, exist_ok=True)
         
         output_file_soma_no_perm = os.path.join(morph_output_dir, 'soma_no_permutation.npy')
@@ -635,10 +668,10 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
         output_file_branches_mean = os.path.join(morph_output_dir, f'branches_full_permutation_mean.npy')
         output_file_branches_std = os.path.join(morph_output_dir, f'branches_full_permutation_std.npy')
         
-        output_file_total_no_perm = os.path.join(morph_output_dir, 'total_no_permutation.npy')
-        output_file_total_perm = os.path.join(morph_output_dir, 'total_full_permutation.npy')
-        output_file_total_mean = os.path.join(morph_output_dir, f'total_full_permutation_mean.npy')
-        output_file_total_std = os.path.join(morph_output_dir, f'total_full_permutation_std.npy')
+        #output_file_total_no_perm = os.path.join(morph_output_dir, 'total_no_permutation.npy')
+        #output_file_total_perm = os.path.join(morph_output_dir, 'total_full_permutation.npy')
+        #output_file_total_mean = os.path.join(morph_output_dir, f'total_full_permutation_mean.npy')
+        #output_file_total_std = os.path.join(morph_output_dir, f'total_full_permutation_std.npy')
         
         np.save(output_file_soma_no_perm, merged_soma_coloc_counts_no_perm)
         np.save(output_file_soma_perm, merged_soma_coloc_counts_perm_sum)
@@ -650,10 +683,10 @@ def process_experiment(experiment: str, morph_class: str | None = None) -> None:
         np.save(output_file_branches_mean, means_branches)
         np.save(output_file_branches_std, stds_branches)
         
-        np.save(output_file_total_no_perm, merged_total_coloc_counts_no_perm)
-        np.save(output_file_total_perm, merged_total_coloc_counts_perm_sum)
-        np.save(output_file_total_mean, means_total)
-        np.save(output_file_total_std, stds_total)
+        #np.save(output_file_total_no_perm, merged_total_coloc_counts_no_perm)
+        #np.save(output_file_total_perm, merged_total_coloc_counts_perm_sum)
+        #np.save(output_file_total_mean, means_total)
+        #np.save(output_file_total_std, stds_total)
         
         
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

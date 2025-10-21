@@ -127,8 +127,8 @@ def save_images(output_dir, original_image, labeled_image):
     Save the original and labeled images as .tif files.
     """
     os.makedirs(output_dir, exist_ok=True)
-    original_image_path = os.path.join(output_dir, "binary_image.tif")
-    labeled_image_path = os.path.join(output_dir, "labeled_image.tif")
+    original_image_path = os.path.join(output_dir, "binary_image_astro.tif")
+    labeled_image_path = os.path.join(output_dir, "labeled_image_astro.tif")
     
     tiff.imwrite(original_image_path, original_image.astype(np.uint8))
     tiff.imwrite(labeled_image_path, labeled_image.astype(np.uint32))  # Save labeled image as uint32 to handle large labels

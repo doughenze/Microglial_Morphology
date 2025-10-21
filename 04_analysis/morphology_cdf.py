@@ -25,12 +25,57 @@ import math
 from numpy import matlib
 from scipy.spatial.distance import euclidean
 
+_BATCHID_TO_PATH = {
+ '3-mo-male-1':'202405250811_3-mo-male-mouse-1-cerebellum-IHC_VMSC12602/region_1',
+ '3-mo-male-2':'202406171454_3m-male-2-IHC_VMSC11602/region_0',
+ '3-mo-male-3-rev2':'202407021559_3-mo-male-3-rev2_VMSC12602/region_0',
+ '3-mo-female-1-rev2':'202407010924_3-month-female-1-rev2_VMSC12602/region_0',
+ '3-mo-female-2':'202405311300_3month-female-2-IHC_VMSC12602/region_0',
+ '3-mo-female-3':'202406171409_3m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-male-1':'202406101010_24month-male-1-IHC_VMSC12602/region_0',
+ '24-mo-male-2':'202406141135_24m-male-2-IHC_VMSC12602/region_0',
+ '24-mo-male-4-rev2':'202407011057_24-month-male-4-rev2_VMSC11602/region_0',
+ '24-mo-female-1':'202406071120_24m-female-1-IHC_VMSC11602/region_0',
+ '24-mo-female-3':'202406071304_24m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-female-5':'202406141019_24m-female-5-IHC_VMSC11602/region_0'
+}
+
+#_PATH_TO_BATCHID = {v.rstrip("/"): k for k, v in _BATCHID_TO_PATH.items()}
+
+_PATH_TO_BATCHID = {
+ '202405250811_3-mo-male-mouse-1-cerebellum-IHC_VMSC12602':'3-mo-male-1',
+ '202406171454_3m-male-2-IHC_VMSC11602':'3-mo-male-2',
+ '202407021559_3-mo-male-3-rev2_VMSC12602':'3-mo-male-3-rev2',
+ '202407010924_3-month-female-1-rev2_VMSC12602':'3-mo-female-1-rev2',
+ '202405311300_3month-female-2-IHC_VMSC12602':'3-mo-female-2',
+ '202406171409_3m-female-3-IHC_VMSC12602':'3-mo-female-3',
+ '202406101010_24month-male-1-IHC_VMSC12602':'24-mo-male-1',
+ '202406141135_24m-male-2-IHC_VMSC12602':'24-mo-male-2',
+ '202407011057_24-month-male-4-rev2_VMSC11602':'24-mo-male-4-rev2',
+ '202406071120_24m-female-1-IHC_VMSC11602':'24-mo-female-1',
+ '202406071304_24m-female-3-IHC_VMSC12602':'24-mo-female-3',
+ '202406141019_24m-female-5-IHC_VMSC11602':'24-mo-female-5'
+}
+
+#def extract_batch_id(exp_path) -> str:
+#    """
+#    Map any full experiment path—whether or not it ends with ‘/’—
+#    to the corresponding key in _BATCHID_TO_PATH.
+#    """
+#    # normalise: remove trailing slashes, convert to forward-slash string
+#    exp_path = Path(exp_path).as_posix().rstrip("/")#
+
+#    for fragment, batch_id in _PATH_TO_BATCHID.items():
+#        if fragment in exp_path:
+#            return batch_id
+#    raise ValueError(f"Could not map {exp_path!r} to any batch ID.")
+
 def find_filtered_transcripts(experiment_path):
-    region_types = ['region_0', 'region_1']
-    for region in region_types:
-        file_path = f'{experiment_path}baysor/detected_transcripts.csv'
-        if os.path.exists(file_path):
-            return pd.read_csv(file_path,index_col=0)
+    #region_types = ['region_0', 'region_1']
+    #for region in region_types:
+    file_path = f'{experiment_path}detected_transcripts.csv'
+    if os.path.exists(file_path):
+        return pd.read_csv(file_path,index_col=0)
     return None
 
 def extract_sub_image_with_padding(image, bbox, padding=10):
@@ -40,20 +85,15 @@ def extract_sub_image_with_padding(image, bbox, padding=10):
     max_row = min(max_row + padding, image.shape[0])
     max_col = min(max_col + padding, image.shape[1])
     return image[min_row:max_row, min_col:max_col], (min_row, min_col)
-
 def load_images(batchID, x_ax, y_ax, raw_im, raw_dapi,transcripts):
-    root = '/hpc/projects/group.quake/doug/Shapes_Spatial/'
+    root = "/oak/stanford/groups/quake/shared/Vizgen/dough/output/"
     
-    transform_file = f'{root}{batchID}/images/micron_to_mosaic_pixel_transform.csv'
+    transform_file = f'{root}{_BATCHID_TO_PATH[batchID]}/images/micron_to_mosaic_pixel_transform.csv'
     transform_df = pd.read_table(transform_file, sep=' ', header=None)
     transformation_matrix = transform_df.values
     
     x_ax = round(x_ax * transformation_matrix[0, 0] + transformation_matrix[0, 2])
     y_ax = round(y_ax * transformation_matrix[1, 1] + transformation_matrix[1, 2])
-    
-    #print(f'load {batchID}')
-    #raw_im = Mapping.load_tiff_image(root + batchID + '/binary_image.tif')
-    #dapi_im = Mapping.load_tiff_image(root + batchID + '/images/mosaic_DAPI_z3.tif')
     
     box_size = 500
     x_start = x_ax - box_size
@@ -409,26 +449,27 @@ def main(ordered_morph):
     ad_parent = sc.read_h5ad('Transciptomic_labels_and_morphology_labels_full.h5ad')
     ad_parent = ad_parent[ad_parent.obs['ordered_morph'] == ordered_morph]
     
-    experiment_base_paths = [
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/3-mo-male-1/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/3-mo-male-2/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/3-mo-male-3-rev2/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/3-mo-female-1-rev2/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/3-mo-female-2/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/3-mo-female-3/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/24-mo-male-1/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/24-mo-male-2/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/24-mo-male-4-rev2/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/24-mo-female-1/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/24-mo-female-3/',
-        '/hpc/projects/group.quake/doug/Shapes_Spatial/24-mo-female-5/',
-    ]
+    root_dir = "/oak/stanford/groups/quake/shared/Vizgen/dough/output/"
+
+    experiment_base_paths = [f'{root_dir}202405250811_3-mo-male-mouse-1-cerebellum-IHC_VMSC12602/region_1/',
+                         f'{root_dir}202406171454_3m-male-2-IHC_VMSC11602/region_0/',
+                         f'{root_dir}202407021559_3-mo-male-3-rev2_VMSC12602/region_0/',
+                         f'{root_dir}202407010924_3-month-female-1-rev2_VMSC12602/region_0/',
+                         f'{root_dir}202405311300_3month-female-2-IHC_VMSC12602/region_0/',
+                         f'{root_dir}202406171409_3m-female-3-IHC_VMSC12602/region_0/',
+                         f'{root_dir}202406101010_24month-male-1-IHC_VMSC12602/region_0/',
+                         f'{root_dir}202406141135_24m-male-2-IHC_VMSC12602/region_0/',
+                         f'{root_dir}202407011057_24-month-male-4-rev2_VMSC11602/region_0/',
+                         f'{root_dir}202406071120_24m-female-1-IHC_VMSC11602/region_0/',
+                         f'{root_dir}202406071304_24m-female-3-IHC_VMSC12602/region_0/',
+                         f'{root_dir}202406141019_24m-female-5-IHC_VMSC11602/region_0/',
+                        ]
     
     normalized_distances_dict = {}
     
     for experiment in experiment_base_paths:
-        batch = experiment.split('/')[-2]
-        ad_viz = ad_parent[ad_parent.obs.batchID == batch]
+        batch = experiment.split('/')[-3]
+        ad_viz = ad_parent[ad_parent.obs.batchID == _PATH_TO_BATCHID[batch]]
         transform_file = f'{experiment}/images/micron_to_mosaic_pixel_transform.csv'
         transform_matrix = pd.read_table(transform_file, sep=' ', header=None).iloc[:2]
         transcripts = find_filtered_transcripts(experiment)
@@ -443,15 +484,15 @@ def main(ordered_morph):
         predefined_gene_list = np.unique(transcripts.gene.unique().tolist())
         # we already found the transcripts in each cell so we can just use them right here
         # All we want to show is distance from soma so this is fine in max projection land
-        transcripts = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_complete.csv',index_col = 0)
+        transcripts = pd.read_csv(f'transcript_out_slice_by_slice_v5/{_PATH_TO_BATCHID[batch]}_complete.csv',index_col = 0)
         
         for i in tqdm(range(len(ad_viz)), desc=f"Processing {batch}"):
             # grab relevant cells and generate lists of cells
             ad_test = ad_viz[i,:]
-            small_raw, small_dapi, small_transcripts, image_loc = load_images(batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0],raw_im, raw_dapi,transcripts)
+            small_raw, small_dapi, small_transcripts, image_loc = load_images(_PATH_TO_BATCHID[batch], ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0],raw_im, raw_dapi,transcripts)
     
-            filled_raw = segment_image(small_raw, 205, foreground=True)
-            filled_dapi = segment_image(small_dapi, 255, foreground=True, dapi=True)
+            filled_raw = segment_image(small_raw, 201, foreground=True)  # max proj so 201
+            filled_dapi = segment_image(small_dapi, 155, foreground=True, dapi=True)
     
             micro_1 = roi_picker(filled_raw)
             dapi_1 = roi_picker(filled_dapi,dapi=True)

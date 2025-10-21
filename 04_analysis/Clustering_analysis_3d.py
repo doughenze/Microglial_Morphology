@@ -1,5 +1,6 @@
 # This code was adapted from the DypFish repo: https://github.com/cbib/dypfish
 
+from pathlib import Path
 import scanpy as sc
 import pandas as pd
 import os
@@ -25,6 +26,37 @@ import math
 from numpy import matlib
 import re
 
+# Global Dictionary
+_BATCHID_TO_PATH = {
+ '3-mo-male-1':'202405250811_3-mo-male-mouse-1-cerebellum-IHC_VMSC12602/region_1',
+ '3-mo-male-2':'202406171454_3m-male-2-IHC_VMSC11602/region_0',
+ '3-mo-male-3-rev2':'202407021559_3-mo-male-3-rev2_VMSC12602/region_0',
+ '3-mo-female-1-rev2':'202407010924_3-month-female-1-rev2_VMSC12602/region_0',
+ '3-mo-female-2':'202405311300_3month-female-2-IHC_VMSC12602/region_0',
+ '3-mo-female-3':'202406171409_3m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-male-1':'202406101010_24month-male-1-IHC_VMSC12602/region_0',
+ '24-mo-male-2':'202406141135_24m-male-2-IHC_VMSC12602/region_0',
+ '24-mo-male-4-rev2':'202407011057_24-month-male-4-rev2_VMSC11602/region_0',
+ '24-mo-female-1':'202406071120_24m-female-1-IHC_VMSC11602/region_0',
+ '24-mo-female-3':'202406071304_24m-female-3-IHC_VMSC12602/region_0',
+ '24-mo-female-5':'202406141019_24m-female-5-IHC_VMSC11602/region_0'
+}
+
+_PATH_TO_BATCHID = {v.rstrip("/"): k for k, v in _BATCHID_TO_PATH.items()}
+
+def extract_batch_id(exp_path) -> str:
+    """
+    Map any full experiment path—whether or not it ends with ‘/’—
+    to the corresponding key in _BATCHID_TO_PATH.
+    """
+    # normalise: remove trailing slashes, convert to forward-slash string
+    exp_path = Path(exp_path).as_posix().rstrip("/")
+
+    for fragment, batch_id in _PATH_TO_BATCHID.items():
+        if fragment in exp_path:
+            return batch_id
+    raise ValueError(f"Could not map {exp_path!r} to any batch ID.")
+
 # attempting a monkey-patch to make this run much faster:
 # ─────────────────────────────────────────────────────────────
 #   1.  Monkey-patch Mapping.load_tiff_image   (do this ONCE)
@@ -45,12 +77,12 @@ def _warm_cache(batch: str, z_vals, root: str):
     channels = ("Anti-Rabbit")
     for z in z_vals:
         for ch in channels:
-            p = f"{root}/{batch}/images/mosaic_{ch}_z{z}.tif"
+            p = f"{root}/{_BATCHID_TO_PATH[batch]}/images/mosaic_{ch}_z{z}.tif"
             if os.path.exists(p):
                 Mapping.load_tiff_image(p)   # first call → disk, later calls → RAM
     # single-plane helpers
-    Mapping.load_tiff_image(f"{root}/{batch}/binary_image.tif")
-    Mapping.load_tiff_image(f"{root}/{batch}/images/mosaic_DAPI_z3.tif")
+    Mapping.load_tiff_image(f"{root}/{_BATCHID_TO_PATH[batch]}/binary_image.tif")
+    Mapping.load_tiff_image(f"{root}/{_BATCHID_TO_PATH[batch]}/images/mosaic_DAPI_z3.tif")
 
 def find_max_z(directory):
     max_z = None
@@ -64,11 +96,11 @@ def find_max_z(directory):
     return max_z
 
 def find_filtered_transcripts(experiment_path):
-    region_types = ['region_0', 'region_1']
-    for region in region_types:
-        file_path = f'{experiment_path}baysor/detected_transcripts.csv'
-        if os.path.exists(file_path):
-            return pd.read_csv(file_path,index_col=0)
+    #region_types = ['region_0', 'region_1']
+    #for region in region_types:
+    file_path = f'{experiment_path}detected_transcripts.csv'
+    if os.path.exists(file_path):
+        return pd.read_csv(file_path,index_col=0)
     return None
 
 def extract_sub_image_with_padding(image, bbox, padding=10):
@@ -80,9 +112,9 @@ def extract_sub_image_with_padding(image, bbox, padding=10):
     return image[min_row:max_row, min_col:max_col], (min_row, min_col)
 
 def load_images(batchID, x_ax, y_ax, raw_im, raw_dapi,transcripts):
-    root = '/hpc/projects/group.quake/doug/Shapes_Spatial/'
+    root = "/oak/stanford/groups/quake/shared/Vizgen/dough/output/"
     
-    transform_file = f'{root}{batchID}/images/micron_to_mosaic_pixel_transform.csv'
+    transform_file = f'{root}{_BATCHID_TO_PATH[batchID]}/images/micron_to_mosaic_pixel_transform.csv'
     transform_df = pd.read_table(transform_file, sep=' ', header=None)
     transformation_matrix = transform_df.values
     
@@ -792,18 +824,18 @@ def compute_h_star_3d(h: np.ndarray, synth5: list[int], synth50: list[int], synt
     return h_star
 
 def process_experiment(experiment, morph_class=None):
-    batch = experiment.split('/')[-2]
+    batch = extract_batch_id(experiment)
     
-    ad_parent = sc.read_h5ad('Transciptomic_labels_and_morphology_labels_full.h5ad')
+    ad_parent = sc.read_h5ad('/oak/stanford/groups/quake/doug/bruno_transfer/Papers/Shapes/full_run/conflicts_correction/Microglial_Morphology/04_analysis/Transciptomic_labels_and_morphology_labels_full.h5ad')
     ad_viz = ad_parent[ad_parent.obs.batchID == batch]
     
     transform_file = f'{experiment}/images/micron_to_mosaic_pixel_transform.csv'
     transform_matrix = pd.read_table(transform_file, sep=' ', header=None).iloc[:2]
     r_max = np.ceil(np.sqrt((ad_parent.obs['Convex Hull Area'].max() * (1/transform_matrix.iloc[0,0])**2)/np.pi)).astype(int)
-    transcripts = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_complete.csv',index_col = 0)
-    counts_matrix_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_nuc.csv',index_col = 0)
-    counts_matrix_non_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_non_nuc.csv',index_col = 0)
-    counts_matrix_full_cell = pd.read_csv(f'transcript_out_slice_by_slice_v3/{batch}_nuc_y_non_nuc.csv',index_col = 0)
+    transcripts = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_complete.csv',index_col = 0)
+    counts_matrix_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_nuc.csv',index_col = 0)
+    counts_matrix_non_nuc = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_non_nuc.csv',index_col = 0)
+    counts_matrix_full_cell = pd.read_csv(f'transcript_out_slice_by_slice_v5/{batch}_nuc_y_non_nuc.csv',index_col = 0)
     
     # this is to prevent a bug later
     counts_matrix_nuc.index = counts_matrix_nuc.index.astype(str)
@@ -811,7 +843,7 @@ def process_experiment(experiment, morph_class=None):
     counts_matrix_full_cell.index = counts_matrix_full_cell.index.astype(str)
     
     # warming the cache so that the loop runs very quickly.
-    root = '/hpc/projects/group.quake/doug/Shapes_Spatial/'
+    root = "/oak/stanford/groups/quake/shared/Vizgen/dough/output/"
     z_vals = transcripts.global_z.unique().astype(int)
     _warm_cache(batch, z_vals, root.rstrip("/"))
     print(f"[{batch}]  cache warm-up done ({len(z_vals)} z-planes)")
@@ -820,9 +852,9 @@ def process_experiment(experiment, morph_class=None):
     #blank_names = transcripts[transcripts.gene.str.contains('Blank')].gene.unique().tolist()
 
     #root = '/hpc/projects/group.quake/doug/Shapes_Spatial/'
-    raw_im_max = Mapping.load_tiff_image(root + batch + '/binary_image.tif')
-    raw_dapi_single = Mapping.load_tiff_image(root + batch + '/images/mosaic_DAPI_z3.tif')
-    max_z = find_max_z(root + batch + '/images/')
+    raw_im_max = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + '/binary_image.tif')
+    raw_dapi_single = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + '/images/mosaic_DAPI_z3.tif')
+    max_z = find_max_z(root + _BATCHID_TO_PATH[batch] + '/images/')
     
     transcripts_whole = find_filtered_transcripts(experiment)
     gene_col = 'gene'
@@ -832,6 +864,7 @@ def process_experiment(experiment, morph_class=None):
     blank_names = transcripts_whole[transcripts_whole.gene.str.contains('Blank')].gene.unique().tolist()
 
     morph_classes = [morph_class] if morph_class else ad_viz.obs['ordered_morph'].unique()
+    print(morph_classes)
     for morph_class in morph_classes:
         print(f"Processing morph class {morph_class} in batch {batch}")
         ad_viz_morph = ad_viz[ad_viz.obs['ordered_morph'] == morph_class]
@@ -844,11 +877,15 @@ def process_experiment(experiment, morph_class=None):
             # just loading plane shape here so I can use already loaded values and the same one for each
             #raw_im = Mapping.load_tiff_image(root + batch + f'/images/mosaic_Anti-Rabbit_z0.tif')
             #raw_dapi = Mapping.load_tiff_image(root + batch + f'/images/mosaic_DAPI_z0.tif')
-            small_raw, small_dapi, small_transcripts, image_loc = load_images(
-                batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0], raw_dapi_single, raw_dapi_single,
+            small_raw_max, small_dapi, small_transcripts, image_loc = load_images(
+                batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0], raw_im_max, raw_dapi_single,
                 transcripts[transcripts.cell == ad_test.obs.Name[0]]
             )
-            plane_shape = small_raw.shape  # (Y, X)
+            plane_shape = small_raw_max.shape  # (Y, X)
+            
+            # generate a segmentation of the max projected microglia
+            filled_raw_max = segment_image(small_raw_max, 201, foreground=True)
+            micro_max = roi_picker(filled_raw_max)
 
             # Pre-allocate 3D masks
             micro_3d = np.zeros((max_z, *plane_shape), dtype=bool)
@@ -858,14 +895,14 @@ def process_experiment(experiment, morph_class=None):
             
             # Load in the 3D volumes of our cells
             for z in range(max_z):
-                raw_im = Mapping.load_tiff_image(root + batch + f'/images/mosaic_Anti-Rabbit_z{z}.tif')
-                raw_dapi = Mapping.load_tiff_image(root + batch + f'/images/mosaic_DAPI_z3.tif')
+                raw_im = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + f'/images/mosaic_Anti-Rabbit_z{z}.tif')
+                raw_dapi = Mapping.load_tiff_image(root + _BATCHID_TO_PATH[batch] + f'/images/mosaic_DAPI_z3.tif') # leaving dapi as the place we calculated the center at, using the microglia stain to segment it
                 small_raw, small_dapi, _, _ = load_images(batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0],raw_im, raw_dapi,transcripts[transcripts.cell == ad_test.obs.Name[0]])
 
-                filled_raw = segment_image(small_raw, 205, foreground=True)
-                filled_dapi = segment_image(small_dapi, 255, foreground=True, dapi=True)
+                filled_raw = segment_image(small_raw, 155, foreground=True)
+                filled_dapi = segment_image(small_dapi, 155, foreground=True, dapi=True)
     
-                micro_1 = roi_picker(filled_raw)
+                micro_1 = micro_max & filled_raw  # this will just grab segmented branches within our microglia mask
                 dapi_1 = roi_picker(filled_dapi,dapi=True)
                 dapi_1 = np.logical_and(dapi_1.astype(bool), micro_1.astype(bool))
                 total_1 = np.logical_or(dapi_1.astype(bool), micro_1.astype(bool))
@@ -878,10 +915,11 @@ def process_experiment(experiment, morph_class=None):
             
             # keep max projections ready for non_dapi_1 because we need it for process clustering
             small_raw, small_dapi, small_transcripts, _ = load_images(batch, ad_test.obs.x.iloc[0], ad_test.obs.y.iloc[0],raw_im, raw_dapi,transcripts[transcripts.cell == ad_test.obs.Name[0]])
-            filled_raw = segment_image(small_raw, 205, foreground=True)
-            filled_dapi = segment_image(small_dapi, 255, foreground=True, dapi=True)
-
-            non_dapi_1 = np.logical_and(micro_1.astype(bool), np.logical_not(filled_dapi.astype(bool))).astype(np.uint8)
+            #filled_raw = segment_image(small_raw, 155, foreground=True)
+            #filled_dapi = segment_image(small_dapi, 155, foreground=True, dapi=True)
+            
+            # micro_max is our max_proj not micro_1
+            non_dapi_1 = np.logical_and(micro_max.astype(bool), np.logical_not(filled_dapi.astype(bool))).astype(np.uint8)
             
             # split the transcripts by compartment as done previously
             counts_non_nuclei = small_transcripts[small_transcripts.compartment == 'cyto']
@@ -904,24 +942,27 @@ def process_experiment(experiment, morph_class=None):
             counts_non_nuclei['x'] = counts_non_nuclei['translate_x'] / transform_matrix.iloc[0, 0]
             counts_non_nuclei['y'] = counts_non_nuclei['translate_y'] / transform_matrix.iloc[1, 1]
             counts_non_nuclei['z'] = (counts_non_nuclei['global_z'].astype(int) + 1) * 1.5
-        
-            gene_no = 0
-            for gene in genes:
-                subset_genes = small_transcripts[small_transcripts.gene == gene]
-                if gene not in counts_matrix_full.columns.tolist():
-                    counts_matrix_full[gene] = 0
-                subset_counts = counts_matrix_full[[gene]]
-                if len(subset_genes) == 0:
-                    d_of_c = 0.0001
-                else:
-                    d_of_c = compute_degree_of_clustering_3d(subset_genes,subset_counts,total_3d,r_max,transform_matrix)
-                full_d_c[gene_no, i] = d_of_c
-                gene_no += 1
-            print(f"full: {full_d_c[:,i].max()}")
+            
+            # no need for the full
+            #gene_no = 0
+            #for gene in genes:
+            #    subset_genes = small_transcripts[small_transcripts.gene == gene]
+            #    if gene not in counts_matrix_full.columns.tolist():
+            #        counts_matrix_full[gene] = 0
+            #    subset_counts = counts_matrix_full[[gene]]
+            #    if len(subset_genes) == 0:
+            #        d_of_c = 0.0001
+            #    else:
+            #        d_of_c = compute_degree_of_clustering_3d(subset_genes,subset_counts,total_3d,r_max,transform_matrix)
+            #    full_d_c[gene_no, i] = d_of_c
+            #    gene_no += 1
+            #print(f"full: {full_d_c[:,i].max()}")
                 
             gene_no = 0
             for gene in genes:
                 subset_genes = counts_nuclei[counts_nuclei.gene == gene]
+                if gene not in counts_matrix_full.columns.tolist():
+                    counts_matrix_full[gene] = 0
                 subset_counts = counts_matrix_full[[gene]]
                 if len(subset_genes) == 0:
                     d_of_c = 0.0001
@@ -944,10 +985,10 @@ def process_experiment(experiment, morph_class=None):
                 branches_d_c[gene_no,i] = d_of_c
                 gene_no += 1
             print(f"branches: {branches_d_c[:,i].max()}")
-        morph_output_dir = f'cluster_output_v2/{batch}/morph_{morph_class}'
+        morph_output_dir = f'cluster_output_v4/{batch}/morph_{morph_class}'
         os.makedirs(morph_output_dir, exist_ok=True)
-        output_file = f'{morph_output_dir}/degree_of_clustering.npy'
-        np.save(output_file, full_d_c)
+        #output_file = f'{morph_output_dir}/degree_of_clustering.npy'
+        #np.save(output_file, full_d_c)
         output_file = f'{morph_output_dir}/degree_of_clustering_soma.npy'
         np.save(output_file, soma_d_c)
         output_file = f'{morph_output_dir}/degree_of_clustering_branches.npy'
